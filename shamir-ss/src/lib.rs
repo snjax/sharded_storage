@@ -29,8 +29,8 @@ impl Domain {
     fn interpolate(ps: &Vec<(Fr, Fr)>, xs: &Vec<Fr>) -> Vec<Fr> {
         // computes δ_j(x)
         let delta = |j: usize, x: &Fr| -> Fr {
-            let (x_j, y_j) = ps[j];
-            ps.iter().enumerate().map(|(m, (x_m, y_m))| {
+            let (x_j, _y_j) = ps[j];
+            ps.iter().enumerate().map(|(m, (x_m, _y_m))| {
                 if m != j {
                     (x - x_m) / (x_j - x_m)
                 } else {
