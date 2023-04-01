@@ -135,11 +135,12 @@ impl Domain {
 
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
+impl Default for Domain {
+    fn default() -> Self {
+        // Generator
+        let g = Fr::from(7);
+        // k that sets the group sizes; small group is 2^k, large one is 2^(k+1)
+        let k = 10;
+        Domain::new(g, k)
     }
 }

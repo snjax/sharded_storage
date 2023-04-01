@@ -1,4 +1,5 @@
 [workspace]
 members = [
-    "node"
+    "node",
+    "shamir-ss"
 ]
