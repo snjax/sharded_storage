@@ -57,8 +57,8 @@ impl Storage {
         Self { base_path }
     }
 
-    pub async fn write(&self, address: &str, chunk: &Chunk) -> Result<()> {
-        let path = self.base_path.join(format!("{}.bin", address));
+    pub async fn write(&self, chunk: &Chunk) -> Result<()> {
+        let path = self.base_path.join("data.bin");
         let mut file = tokio::fs::OpenOptions::new()
             .read(true)
             .create(true)
@@ -76,8 +76,8 @@ impl Storage {
         Ok(())
     }
 
-    pub async fn read(&self, address: &str) -> Result<Chunk> {
-        let path = self.base_path.join(format!("{}.bin", address));
+    pub async fn read(&self) -> Result<Chunk> {
+        let path = self.base_path.join("data.bin");
         let mut file = tokio::fs::OpenOptions::new()
             .read(true)
             .create(true)

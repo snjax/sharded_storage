@@ -26,6 +26,7 @@ use crate::{
 mod contract;
 mod error;
 mod storage;
+// mod commitment;
 
 const CHUNK_SIZE: usize = 2;
 
@@ -33,7 +34,7 @@ struct AppState {
     storage: Storage,
     // TODO: Replace with URL?
     peers: RwLock<HashSet<SocketAddr>>,
-    contract: RegistryContract,
+    // contract: RegistryContract,
     domain: Domain,
 }
 
@@ -57,11 +58,10 @@ struct Args {
     addr: SocketAddr,
     #[clap(short, long)]
     peer: Option<SocketAddr>,
-
-    #[clap(long)]
-    rpc_url: String,
-    #[clap(long)]
-    contract: String,
+    // #[clap(long)]
+    // rpc_url: String,
+    // #[clap(long)]
+    // contract: String,
 }
 
 #[tokio::main]
@@ -75,17 +75,17 @@ async fn main() {
     let domain = Domain::from_k(3);
 
     let state = Arc::new(AppState {
-        storage: Storage::new("data.bin").await,
+        storage: Storage::new("./").await,
         peers: RwLock::new(args.peer.into_iter().collect()),
-        contract: RegistryContract::new(&args.rpc_url, &args.contract).unwrap(),
+        // contract: RegistryContract::new(&args.rpc_url, &args.contract).unwrap(),
         domain,
     });
 
     let app = Router::new()
         .route("/", get(|| async { () }))
-        .route("/data/:address", get(get_data).post(set_data))
+        .route("/data", get(get_data).post(set_data))
         .route(
-            "/data/:address/partial",
+            "/data/partial",
             get(get_partial_data).post(set_partial_data),
         )
         // Shameful pseudo p2p. Rewrite with libp2p using the request/response behaviour.
@@ -156,15 +156,12 @@ async fn main() {
     }
 }
 
-async fn get_data(
-    Path(address): Path<String>,
-    State(state): State<Arc<AppState>>,
-) -> AppResult<Json<Vec<String>>> {
-    let mut chunks = vec![state.storage.read(&address).await?];
+async fn get_data(State(state): State<Arc<AppState>>) -> AppResult<Json<Vec<String>>> {
+    let mut chunks = vec![state.storage.read().await?];
 
     for peer in state.peers.read().await.iter() {
         let res = reqwest::Client::new()
-            .get(format!("http://{}/data/{}/partial", peer, address))
+            .get(format!("http://{}/data/partial", peer))
             .send()
             .await;
 
@@ -199,17 +196,13 @@ async fn get_data(
     Ok(Json(elements))
 }
 
-async fn get_partial_data(
-    Path(address): Path<String>,
-    State(state): State<Arc<AppState>>,
-) -> AppResult<Json<ChunkSerde>> {
-    let data = state.storage.read(&address).await?.into();
+async fn get_partial_data(State(state): State<Arc<AppState>>) -> AppResult<Json<ChunkSerde>> {
+    let data = state.storage.read().await?.into();
 
     Ok(Json(data))
 }
 
 async fn set_data(
-    Path(address): Path<String>,
     State(state): State<Arc<AppState>>,
     Json(data): Json<Vec<String>>,
 ) -> AppResult<()> {
@@ -235,8 +228,8 @@ async fn set_data(
         })
         .collect::<Vec<_>>();
 
-    state.storage.write(&address, &chunks[0]).await?;
-    let address = Address::from_str(&address).map_err(|_| anyhow::anyhow!("Invalid address"))?;
+    state.storage.write(&chunks[0]).await?;
+    // let address = Address::from_str(&address).map_err(|_| anyhow::anyhow!("Invalid address"))?;
 
     // FIXME: Calculate commitment and push it to the contract
     // state.contract.push_state(address, commit).await?;
@@ -245,7 +238,7 @@ async fn set_data(
     let peers = state.peers.read().await.clone();
     for (chunk, peer) in chunks[1..].into_iter().zip(peers.into_iter()) {
         let res = reqwest::Client::new()
-            .post(format!("http://{}/data/{}/partial", peer, address))
+            .post(format!("http://{}/data/partial", peer))
             .json(&ChunkSerde::from(chunk.clone()))
             .send()
             .await;
@@ -271,15 +264,13 @@ async fn set_data(
 }
 
 async fn set_partial_data(
-    Path(address): Path<String>,
     State(state): State<Arc<AppState>>,
     Json(data): Json<ChunkSerde>,
 ) -> AppResult<()> {
     let chunk = data.into();
-    state.storage.write(&address, &chunk).await?;
+    state.storage.write(&chunk).await?;
 
     // let address = Address::from_str(&address).map_err(|_| anyhow::anyhow!("Invalid address"))?;
-    // TODO: Do I need to do it here?
     // state.contract.push_state(address, commit).await?;
 
     Ok(())
