@@ -19,61 +19,16 @@ use tokio::{
     sync::RwLock,
 };
 
-type Data = Vec<Fr>;
+use crate::{contract::RegistryContract, storage::Storage};
 
-struct Storage {
-    path: PathBuf,
-    data: Data,
-}
-
-impl Storage {
-    async fn new(path: &str) -> Self {
-        let path = path.parse().unwrap();
-        let mut file = tokio::fs::OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(&path)
-            .await
-            .unwrap();
-
-        let mut buf = vec![];
-        file.read_to_end(&mut buf).await.unwrap();
-
-        let data = if buf.is_empty() {
-            vec![]
-        } else {
-            Data::deserialize_compressed(&mut &buf[..]).unwrap()
-        };
-
-        Self { path, data }
-    }
-
-    async fn write(&mut self, data: Data) {
-        let mut file = tokio::fs::OpenOptions::new()
-            .read(true)
-            .create(true)
-            .open(&self.path)
-            .await
-            .unwrap();
-
-        let mut buf = vec![];
-        data.serialize_compressed(&mut buf).unwrap();
-
-        file.write_all(&buf).await.unwrap();
-
-        self.data = data;
-    }
-
-    async fn read(&self) -> Data {
-        self.data.clone()
-    }
-}
+mod contract;
+mod storage;
 
 struct AppState {
     storage: Storage,
     // TODO: Replace with URL?
     peers: RwLock<HashSet<SocketAddr>>,
+    contract: RegistryContract,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -96,6 +51,11 @@ struct Args {
     addr: SocketAddr,
     #[clap(short, long)]
     peer: Option<SocketAddr>,
+
+    #[clap(long)]
+    rpc_url: String,
+    #[clap(long)]
+    contract: String,
 }
 
 #[tokio::main]
@@ -109,6 +69,7 @@ async fn main() {
     let state = Arc::new(AppState {
         storage: Storage::new("data.bin").await,
         peers: RwLock::new(args.peer.into_iter().collect()),
+        contract: RegistryContract::new(&args.rpc_url, &args.contract).unwrap(),
     });
 
     let app = Router::new()
