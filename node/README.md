@@ -13,8 +13,8 @@ cargo run -- -a 0.0.0.0:3003 --peer 127.0.0.1:3000 --rpc-url http://localhost:85
 
 ## API
 ```
-GET /data/:address - Get the whole data set
-POST /data/:address - Set data: encode, chunk, and send to peers
-GET /data/:address/partial - Get partial data
-POST /data/:address/partial - Set partial data
+GET /data/ - Get the whole data set
+POST /data - Set data: encode, chunk, and send to peers
+GET /data/partial - Get partial data
+POST /data/partial - Set partial data
 ```

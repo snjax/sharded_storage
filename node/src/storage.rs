@@ -29,6 +29,13 @@ pub struct Chunk {
 }
 
 impl Chunk {
+    pub fn new() -> Self {
+        Self {
+            chunk: 0,
+            data: vec![],
+        }
+    }
+
     pub fn new_empty(chunk: u32, size: usize) -> Self {
         Self {
             chunk,
@@ -47,23 +54,22 @@ impl From<ChunkSerde> for Chunk {
 }
 
 pub struct Storage {
-    base_path: PathBuf,
+    path: PathBuf,
 }
 
 impl Storage {
-    pub async fn new(base_path: &str) -> Self {
-        let base_path = base_path.parse().unwrap();
+    pub async fn new(path: &str) -> Self {
+        let path = path.parse().unwrap();
 
-        Self { base_path }
+        Self { path }
     }
 
-    pub async fn write(&self, chunk: &Chunk) -> Result<()> {
-        let path = self.base_path.join("data.bin");
+    pub async fn write(&self, chunk: &Chunk) -> Result<()> { ;
         let mut file = tokio::fs::OpenOptions::new()
             .read(true)
             .create(true)
             .write(true)
-            .open(&path)
+            .open(&self.path)
             .await?;
 
         let mut buf = vec![];
@@ -76,19 +82,20 @@ impl Storage {
         Ok(())
     }
 
-    pub async fn read(&self) -> Result<Chunk> {
-        let path = self.base_path.join("data.bin");
-        let mut file = tokio::fs::OpenOptions::new()
-            .read(true)
-            .create(true)
-            .write(true)
-            .open(&path)
-            .await?;
+    pub async fn read(&self) -> Option<Chunk> {
+        let mut file = match tokio::fs::OpenOptions::new().read(true).open(&self.path).await {
+            Ok(file) => file,
+            Err(err) => {
+                tracing::warn!("Error opening file: {}", err);
+                return None;
+            }
+        };
 
         let mut buf = vec![];
-        file.read_to_end(&mut buf).await.unwrap();
+        if let Err(_) = file.read_to_end(&mut buf).await { 
+            return None;
+        }
 
-        Chunk::deserialize_compressed(&mut &buf[..])
-            .map_err(|_| anyhow::anyhow!("Deserialization error. File: {:?}", path))
+        Chunk::deserialize_compressed(&mut &buf[..]).ok()
     }
 }

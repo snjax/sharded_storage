@@ -58,6 +58,8 @@ struct Args {
     addr: SocketAddr,
     #[clap(short, long)]
     peer: Option<SocketAddr>,
+    #[clap(short, long)]
+    file: String,
     // #[clap(long)]
     // rpc_url: String,
     // #[clap(long)]
@@ -75,7 +77,7 @@ async fn main() {
     let domain = Domain::from_k(3);
 
     let state = Arc::new(AppState {
-        storage: Storage::new("./").await,
+        storage: Storage::new(&args.file).await,
         peers: RwLock::new(args.peer.into_iter().collect()),
         // contract: RegistryContract::new(&args.rpc_url, &args.contract).unwrap(),
         domain,
@@ -157,7 +159,7 @@ async fn main() {
 }
 
 async fn get_data(State(state): State<Arc<AppState>>) -> AppResult<Json<Vec<String>>> {
-    let mut chunks = vec![state.storage.read().await?];
+    let mut chunks = vec![state.storage.read().await.unwrap_or(Chunk::new())];
 
     for peer in state.peers.read().await.iter() {
         let res = reqwest::Client::new()
@@ -197,7 +199,7 @@ async fn get_data(State(state): State<Arc<AppState>>) -> AppResult<Json<Vec<Stri
 }
 
 async fn get_partial_data(State(state): State<Arc<AppState>>) -> AppResult<Json<ChunkSerde>> {
-    let data = state.storage.read().await?.into();
+    let data = state.storage.read().await.unwrap_or(Chunk::new()).into();
 
     Ok(Json(data))
 }
@@ -290,6 +292,8 @@ async fn p2p(
             let mut peers = state.peers.write().await;
             let other_peers = peers.iter().copied().collect();
             peers.insert(addr);
+
+            // TODO: notify other peers
 
             Json(P2PResponse::Connected { other_peers })
         }
