@@ -12,7 +12,7 @@ This is the main idea of our storage. If we split 2N points into M chunks and st
 
 ## Demo
 
-<place for youtube link>
+https://youtu.be/CaJYXCTBzWk
 
 ## Contacts
 
