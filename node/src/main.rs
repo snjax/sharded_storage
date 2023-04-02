@@ -189,6 +189,8 @@ async fn get_data(State(state): State<Arc<AppState>>) -> AppResult<Json<Vec<Stri
 
     tracing::info!("Chunks: {:?}", chunks);
 
+    // Reassemble chunks
+    // FIXME: something's wrong here
     let mut elements: Vec<Option<Fr>> = vec![];
     for (i, chunk) in chunks.iter().enumerate() {
         if chunk.data.is_empty() {
@@ -206,6 +208,8 @@ async fn get_data(State(state): State<Arc<AppState>>) -> AppResult<Json<Vec<Stri
 
     tracing::info!("Elements: {:?}", elements);
 
+    // TODO: No need to decode on the server side. Just respond with assembled elements
+    //       or just chunks. It's fine for testing purposes though.
     let elements = state
         .domain
         .decode(&elements)
