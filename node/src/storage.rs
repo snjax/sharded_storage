@@ -61,10 +61,12 @@ impl Storage {
     pub async fn new(path: &str) -> Self {
         let path = path.parse().unwrap();
 
+        let _ = std::fs::remove_file(&path);
+
         Self { path }
     }
 
-    pub async fn write(&self, chunk: &Chunk) -> Result<()> { ;
+    pub async fn write(&self, chunk: &Chunk) -> Result<()> {
         let mut file = tokio::fs::OpenOptions::new()
             .read(true)
             .create(true)
@@ -83,7 +85,11 @@ impl Storage {
     }
 
     pub async fn read(&self) -> Option<Chunk> {
-        let mut file = match tokio::fs::OpenOptions::new().read(true).open(&self.path).await {
+        let mut file = match tokio::fs::OpenOptions::new()
+            .read(true)
+            .open(&self.path)
+            .await
+        {
             Ok(file) => file,
             Err(err) => {
                 tracing::warn!("Error opening file: {}", err);
@@ -92,7 +98,7 @@ impl Storage {
         };
 
         let mut buf = vec![];
-        if let Err(_) = file.read_to_end(&mut buf).await { 
+        if let Err(_) = file.read_to_end(&mut buf).await {
             return None;
         }
 

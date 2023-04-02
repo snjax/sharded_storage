@@ -187,20 +187,21 @@ async fn get_data(State(state): State<Arc<AppState>>) -> AppResult<Json<Vec<Stri
 
     chunks.sort_by_key(|c| c.chunk);
 
+    tracing::info!("Chunks: {:?}", chunks);
+
     let mut elements: Vec<Option<Fr>> = vec![];
     for (i, chunk) in chunks.iter().enumerate() {
         if chunk.data.is_empty() {
             continue;
         }
 
-        // if chunk.chunk != i as u32 {
-        //     println!("Invalid chunk: {}", chunk.chunk);
-        //     elements.extend(std::iter::repeat(None).take(CHUNK_SIZE));
-        // } else {
-        //     elements.extend(chunk.data.iter().map(|e| Some(*e)));
-        // }
-
-        elements.extend(chunk.data.iter().map(|e| Some(*e)));
+        if chunk.chunk > i as u32 {
+            for _ in 0..(chunk.chunk - i as u32) {
+                elements.extend(std::iter::repeat(None).take(CHUNK_SIZE));
+            }
+        } else {
+            elements.extend(chunk.data.iter().map(|e| Some(*e)));
+        }
     }
 
     tracing::info!("Elements: {:?}", elements);
@@ -254,8 +255,8 @@ async fn set_data(
         .collect::<Vec<_>>();
 
     state.storage.write(&chunks[0]).await?;
-    // let address = Address::from_str(&address).map_err(|_| anyhow::anyhow!("Invalid address"))?;
 
+    // let address = Address::from_str(&address).map_err(|_| anyhow::anyhow!("Invalid address"))?;
     // FIXME: Calculate commitment and push it to the contract
     // state.contract.push_state(address, commit).await?;
 

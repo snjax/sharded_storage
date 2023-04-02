@@ -1,7 +1,7 @@
 import json
 import requests
 
-data = ['1', '2', '3']
+data = ['1', '2', '3', '4']
 
 json_data = json.dumps(data)
 headers = {'Content-Type': 'application/json'}
@@ -9,7 +9,7 @@ headers = {'Content-Type': 'application/json'}
 response = requests.post('http://localhost:3000/data', data=json_data, headers=headers)
 print('POST /data result:', response)
 
-for i in range(4):
+for i in range(5):
     response = requests.get(f'http://localhost:300{i}/data/partial')
     print(f'Partial data for peer {i}:', response.json())
 
