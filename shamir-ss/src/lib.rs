@@ -6,12 +6,22 @@ use ark_bn254::Fr;
 
 /// Defines a set of points to evaluate the polynomial in.
 pub struct Domain {
-    g: Fr,
-    k: usize,
-    degrees: Vec<Fr>,
+    pub g: Fr,
+    pub k: usize,
+    pub degrees: Vec<Fr>,
 }
 
 impl Domain {
+
+    /// If you want to encode a vector of 2^k filed elements, use
+    /// `Domain::from_k(k)`.
+    pub fn from_k(k: usize) -> Self {
+        // This is hardcoded for ark_bn254::Fr
+        let n : u64 = 28;
+        /// 5 must generate the whole Fr^*
+        let g = Fr::from(5).pow(vec![n - k as u64].as_slice());
+        Self::new(g, k)
+    }
 
     /// `g` is the generator of the domain group <g>, k defines the number of
     /// elements 2^k to evaluate the polynomial in.
@@ -55,7 +65,7 @@ impl Domain {
     /// use shamir_ss::Domain;
     /// use ark_ff::fields::Field;
     /// use ark_bn254::Fr;
-    /// let d = Domain::new(Fr::from(2), 2);
+    /// let d = Domain::from_k(2);
     /// let v : Vec<Fr> = vec![1, 2, 3, 4].iter().map(|&x| Fr::from(x)).collect();
     /// let c = d.encode(v.clone());
     /// assert_eq!(v, vec![c[0], c[2], c[4], c[6]]);
@@ -85,7 +95,7 @@ impl Domain {
     /// use shamir_ss::Domain;
     /// use ark_ff::fields::Field;
     /// use ark_bn254::Fr;
-    /// let d = Domain::new(Fr::from(2), 2);
+    /// let d = Domain::from_k(2);
     /// let v : Vec<Fr> = vec![1, 2, 3, 4].iter().map(|&x| Fr::from(x)).collect();
     /// let c = d.encode(v.clone()).into_iter().map(|x| Some(x)).collect();
     /// assert_eq!(Some(v), d.decode(&c));
@@ -97,7 +107,7 @@ impl Domain {
     /// use shamir_ss::Domain;
     /// use ark_ff::fields::Field;
     /// use ark_bn254::Fr;
-    /// let d = Domain::new(Fr::from(2), 2);
+    /// let d = Domain::from_k(2);
     /// let v : Vec<Fr> = vec![1, 2, 3, 4].iter().map(|&x| Fr::from(x)).collect();
     /// let mut c : Vec<Option<Fr>> = d.encode(v.clone()).into_iter().map(|x| Some(x)).collect();
     /// c[0] = None;
@@ -112,7 +122,7 @@ impl Domain {
     /// use shamir_ss::Domain;
     /// use ark_ff::fields::Field;
     /// use ark_bn254::Fr;
-    /// let d = Domain::new(Fr::from(2), 2);
+    /// let d = Domain::from_k(2);
     /// let v : Vec<Fr> = vec![1, 2, 3, 4].iter().map(|&x| Fr::from(x)).collect();
     /// let mut c : Vec<Option<Fr>> = d.encode(v.clone()).into_iter().map(|x| Some(x)).collect();
     /// c[0] = None;
@@ -133,14 +143,4 @@ impl Domain {
         }
     }
 
-}
-
-impl Default for Domain {
-    fn default() -> Self {
-        // Generator
-        let g = Fr::from(7);
-        // k that sets the group sizes; small group is 2^k, large one is 2^(k+1)
-        let k = 10;
-        Domain::new(g, k)
-    }
 }
