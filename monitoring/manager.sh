@@ -15,49 +15,39 @@ function listFunc() {
     then
         currentCountOfNodes=$(head -n 1 $stateFile)
         echo "Now launched $currentCountOfNodes nodes"
-        sed 1d $stateFile | while read -r line
-        do
-            kill 3486 "$line"
-        done
     else
         echo "There isn't launched nodes"
     fi 
 }
 
 function launchFunc() {
-    #echo "Enter count of nodes"
-    #read count
-    count=4
+    echo "Enter count of nodes"
+    read count
     re='^[0-9]+$'
     if ! [[ $count =~ $re ]] ; then
     echo "error: Not a number" >&2; exit 
     fi
 
-    tee stateFile <<<$count
-    ports=()
-    for ((i=0; i<$count; i++));
+    #run master node
+    currentDir=$(pwd)
+    mainNodeComand="cd $currentDir && cd ../node && cargo run -- -a 0.0.0.0:3000"
+    osascript -e "tell app \"Terminal\"
+        do script \"${mainNodeComand};\"
+    end tell"
+    sleep 2
+    for ((i=1; i<$count; i++));
     do
-        ports+=("300$i")
+        nodeComand="cd $currentDir && cd ../node && cargo run -- -a 0.0.0.0:300$i --peer 127.0.0.1:3000"
+        osascript -e "tell app \"Terminal\"
+            do script \"${nodeComand};\"
+        end tell"
+        echo $((i+1)) > stateFile
     done
-    for ((i=0; i<$count; i++));
-    do
-        port1=$i
+    echo "Launched"
+}
 
-        port2=$((i+1))
-        port2=$((port2%count))
-
-        port3=$((i+2))
-        port3=$((port3%count))
-
-        port4=$((i+3))
-        port4=$((port4%count))
-        # cargo run -- -a 0.0.0.0:${ports[$port1]} \
-        # -p localhost:${ports[$port2]} \
-        # -p localhost:${ports[$port3]} \
-        # -p localhost:${ports[$port4]} & 
-        # _pid=$! >> stateFile
-        # echo "$_pid"
-    done
+function killport() { 
+    lsof -t -i tcp:$1 | xargs kill -9 
 }
 
 function killFunc() {
@@ -72,20 +62,13 @@ function killFunc() {
         if ! [[ $countToKill =~ $re ]] ; then
         echo "error: Not a number" >&2; exit 
         fi
-
-        killedCount=1;
-        sed 1d $stateFile | while read -r line
+        
+        for ((i=$currentCountOfNodes; i>$((currentCountOfNodes-countToKill)); i--));
         do  
-            if [ $killedCount \> $countToKill ] ; then
-                newCountOfNodes=$((currentCountOfNodes - countToKill))
-                echo "Now launched $newCountOfNodes nodes"
-                exit
-            fi
-
-            echo $line
-            #kill $line
-            killedCount=$killedCount+1
+            killport "300$((i-1))"
+            echo $((i-1)) > stateFile
         done
+        echo "Killed"
     else
         echo "There isn't launched nodes"
     fi 
