@@ -7,7 +7,6 @@
 const hre = require("hardhat");
 
 async function main() {
-
   const StateRegistry = await hre.ethers.getContractFactory("StateRegistry");
   const stateRegistry = await StateRegistry.deploy();
 
