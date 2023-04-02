@@ -25,19 +25,38 @@ function listFunc() {
 }
 
 function launchFunc() {
-    echo "Enter count of nodes"
-    read count
+    #echo "Enter count of nodes"
+    #read count
+    count=4
     re='^[0-9]+$'
     if ! [[ $count =~ $re ]] ; then
     echo "error: Not a number" >&2; exit 
     fi
 
     tee stateFile <<<$count
+    ports=()
     for ((i=0; i<$count; i++));
     do
-        open -a TextEdit stateFile --new & 
-        _pid=$! >> stateFile
-        echo "$_pid"
+        ports+=("300$i")
+    done
+    for ((i=0; i<$count; i++));
+    do
+        port1=$i
+
+        port2=$((i+1))
+        port2=$((port2%count))
+
+        port3=$((i+2))
+        port3=$((port3%count))
+
+        port4=$((i+3))
+        port4=$((port4%count))
+        # cargo run -- -a 0.0.0.0:${ports[$port1]} \
+        # -p localhost:${ports[$port2]} \
+        # -p localhost:${ports[$port3]} \
+        # -p localhost:${ports[$port4]} & 
+        # _pid=$! >> stateFile
+        # echo "$_pid"
     done
 }
 
