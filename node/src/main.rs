@@ -1,10 +1,8 @@
 use std::{
-    collections::{HashMap, HashSet},
-    net::SocketAddr,
-    path::PathBuf,
-    sync::Arc,
+    collections::HashSet, net::SocketAddr, ops::Deref, path::PathBuf, str::FromStr, sync::Arc,
 };
 
+use anyhow::Result;
 use ark_bn254::Fr;
 use ark_serialize::{CanonicalDeserialize, CanonicalSerialize, SerializationError};
 use axum::{
@@ -14,21 +12,29 @@ use axum::{
 };
 use clap::Parser;
 use serde::{Deserialize, Serialize};
-use tokio::{
-    io::{AsyncReadExt, AsyncWriteExt},
-    sync::RwLock,
+use shamir_ss::Domain;
+use tokio::sync::RwLock;
+use web3::types::Address;
+
+use crate::{
+    contract::RegistryContract,
+    error::AppResult,
+    storage::{Chunk, ChunkSerde, Storage},
 };
 
-use crate::{contract::RegistryContract, storage::Storage};
-
+// mod commitment;
 mod contract;
+mod error;
 mod storage;
+
+const CHUNK_SIZE: usize = 2;
 
 struct AppState {
     storage: Storage,
     // TODO: Replace with URL?
     peers: RwLock<HashSet<SocketAddr>>,
     contract: RegistryContract,
+    domain: Domain,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -66,16 +72,22 @@ async fn main() {
 
     tracing::info!("{:#?}", &args);
 
+    let domain = Domain::from_k(3);
+
     let state = Arc::new(AppState {
         storage: Storage::new("data.bin").await,
         peers: RwLock::new(args.peer.into_iter().collect()),
         contract: RegistryContract::new(&args.rpc_url, &args.contract).unwrap(),
+        domain,
     });
 
     let app = Router::new()
         .route("/", get(|| async { () }))
-        .route("/data/:address", get(data_get))
-        .route("/data", post(|| async { () }))
+        .route("/data/:address", get(get_data).post(set_data))
+        .route(
+            "/data/:address/partial",
+            get(get_partial_data).post(set_partial_data),
+        )
         // Shameful pseudo p2p. Rewrite with libp2p using the request/response behaviour.
         .route("/p2p", post(p2p))
         .with_state(state.clone());
@@ -144,11 +156,134 @@ async fn main() {
     }
 }
 
-async fn data_get(Path(address): Path<SocketAddr>) -> Json<Vec<String>> {
-    Json(vec![])
+async fn get_data(
+    Path(address): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> AppResult<Json<Vec<String>>> {
+    let mut chunks = vec![state.storage.read(&address).await?];
+
+    for peer in state.peers.read().await.iter() {
+        let res = reqwest::Client::new()
+            .get(format!("http://{}/data/{}/partial", peer, address))
+            .send()
+            .await;
+
+        if let Ok(res) = res {
+            let json = res
+                .json::<ChunkSerde>()
+                .await
+                .map_err(|err| anyhow::anyhow!(err))?;
+            chunks.push(json.into());
+        }
+    }
+
+    chunks.sort_by_key(|c| c.chunk);
+
+    let mut elements: Vec<Option<Fr>> = vec![];
+    for (i, chunk) in chunks.iter().enumerate() {
+        if chunk.chunk != i as u32 {
+            elements.extend(std::iter::repeat(None).take(CHUNK_SIZE));
+        } else {
+            elements.extend(chunk.data.iter().map(|e| Some(*e)));
+        }
+    }
+
+    let elements = state
+        .domain
+        .decode(&elements)
+        .ok_or_else(|| anyhow::anyhow!("Invalid data"))?
+        .into_iter()
+        .map(|e| e.to_string())
+        .collect();
+
+    Ok(Json(elements))
 }
 
-async fn data_post() {}
+async fn get_partial_data(
+    Path(address): Path<String>,
+    State(state): State<Arc<AppState>>,
+) -> AppResult<Json<ChunkSerde>> {
+    let data = state.storage.read(&address).await?.into();
+
+    Ok(Json(data))
+}
+
+async fn set_data(
+    Path(address): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Json(data): Json<Vec<String>>,
+) -> AppResult<()> {
+    let data = data
+        .into_iter()
+        .map(|s| s.parse().map_err(|_| anyhow::anyhow!("Invalid element")))
+        .collect::<Result<Vec<_>>>()?;
+
+    let encoded = state.domain.encode(data);
+    let num_peers = state.peers.read().await.len();
+    let num_chunks = (encoded.len() + CHUNK_SIZE - 1) / CHUNK_SIZE;
+
+    if num_chunks > num_peers {
+        return Err(anyhow::anyhow!("Not enough peers to store data").into());
+    }
+
+    let chunks = encoded
+        .chunks(CHUNK_SIZE)
+        .enumerate()
+        .map(|(n, elements)| Chunk {
+            chunk: n as u32,
+            data: elements.to_vec(),
+        })
+        .collect::<Vec<_>>();
+
+    state.storage.write(&address, &chunks[0]).await?;
+    let address = Address::from_str(&address).map_err(|_| anyhow::anyhow!("Invalid address"))?;
+
+    // FIXME: Calculate commitment and push it to the contract
+    // state.contract.push_state(address, commit).await?;
+
+    // Assuming none of the peers are disconnected
+    let peers = state.peers.read().await.clone();
+    for (chunk, peer) in chunks[1..].into_iter().zip(peers.into_iter()) {
+        let res = reqwest::Client::new()
+            .post(format!("http://{}/data/{}/partial", peer, address))
+            .json(&ChunkSerde::from(chunk.clone()))
+            .send()
+            .await;
+
+        match res {
+            Ok(res) => {
+                if res.status() != 200 {
+                    tracing::error!(
+                        "Failed to send partial data to peer {}: {}",
+                        peer,
+                        res.status()
+                    );
+                }
+            }
+            Err(err) => {
+                tracing::error!("Peer {} is dead: {}", peer, err);
+                // state.peers.write().await.remove(&peer);
+            }
+        }
+    }
+
+    Ok(())
+}
+
+async fn set_partial_data(
+    Path(address): Path<String>,
+    State(state): State<Arc<AppState>>,
+    Json(data): Json<ChunkSerde>,
+) -> AppResult<()> {
+    let chunk = data.into();
+    state.storage.write(&address, &chunk).await?;
+
+    // let address = Address::from_str(&address).map_err(|_| anyhow::anyhow!("Invalid address"))?;
+    // TODO: Do I need to do it here?
+    // state.contract.push_state(address, commit).await?;
+
+    Ok(())
+}
 
 async fn p2p(
     ConnectInfo(client_addr): ConnectInfo<SocketAddr>,
@@ -157,6 +292,7 @@ async fn p2p(
 ) -> Json<P2PResponse> {
     match req {
         P2PRequest::Connect { mut addr } => {
+            // FIXME: Not good
             addr.set_ip(client_addr.ip());
             tracing::info!("Peer {} connected", addr);
 

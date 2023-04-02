@@ -12,8 +12,6 @@ use web3::{
     Web3,
 };
 
-use crate::storage::Data;
-
 const CONTRACT_ABI: &[u8] = include_bytes!("StateRegistry.json");
 
 pub struct RegistryContract {
@@ -30,9 +28,9 @@ impl RegistryContract {
         Ok(Self { web3, contract })
     }
 
-    async fn push_state(&self, address: Address, data: &[Fr]) -> Result<H256> {
+    pub async fn push_state(&self, address: Address, commit: Fr) -> Result<H256> {
         let mut buf = vec![];
-        data.serialize_compressed(&mut buf).unwrap();
+        commit.serialize_compressed(&mut buf).unwrap();
 
         let accounts = self.web3.eth().accounts().await?;
         let hash = self
@@ -43,18 +41,19 @@ impl RegistryContract {
         Ok(hash)
     }
 
-    async fn get_state(&self, address: Address) -> Result<Vec<Fr>> {
+    pub async fn get_state(&self, address: Address) -> Result<Fr> {
         let state: Vec<u8> = self
             .contract
             .query("state", (address), None, Default::default(), None)
             .await?;
 
-        let data = Vec::<Fr>::deserialize_compressed(&mut &state[..]).unwrap();
+        let commit = Fr::deserialize_compressed(&mut &state[..])
+            .map_err(|_| anyhow::anyhow!("Deserialization error"))?;
 
-        Ok(data)
+        Ok(commit)
     }
 
-    async fn get_state_height(&self, address: Address) -> Result<u64> {
+    pub async fn get_state_height(&self, address: Address) -> Result<u64> {
         let state_height: U256 = self
             .contract
             .query("getStateHeight", (address), None, Default::default(), None)
