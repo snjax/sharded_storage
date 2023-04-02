@@ -17,3 +17,4 @@ Cargo.lock
 .vscode
 
 /res/*
+node/data.bin

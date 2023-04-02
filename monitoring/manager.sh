@@ -33,14 +33,14 @@ function launchFunc() {
 
     #run master node
     currentDir=$(pwd)
-    mainNodeComand="cd $currentDir && cd ../node && cargo run -- -a 0.0.0.0:3000 --rpc-url http://localhost:8545 --contract '$contract'"
+    mainNodeComand="cd $currentDir && cd ../node && cargo run --release -- -a 0.0.0.0:3000 --rpc-url http://localhost:8545 --contract '$contract'"
     osascript -e "tell app \"Terminal\"
         do script \"${mainNodeComand};\"
     end tell"
     sleep 2
     for ((i=1; i<$count; i++));
     do
-        nodeComand="cd $currentDir && cd ../node && cargo run -- -a 0.0.0.0:300$i --peer 127.0.0.1:3000 --rpc-url http://localhost:8545 --contract '$contract'"
+        nodeComand="cd $currentDir && cd ../node && cargo run --release -- -a 0.0.0.0:300$i --peer 127.0.0.1:3000 --rpc-url http://localhost:8545 --contract '$contract'"
         osascript -e "tell app \"Terminal\"
             do script \"${nodeComand};\"
         end tell"
