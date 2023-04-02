@@ -74,7 +74,7 @@ async fn main() {
 
     tracing::info!("{:#?}", &args);
 
-    let domain = Domain::from_k(3);
+    let domain = Domain::from_k(2);
 
     let state = Arc::new(AppState {
         storage: Storage::new(&args.file).await,
@@ -98,9 +98,16 @@ async fn main() {
     let http = axum::Server::bind(&args.addr)
         .serve(app.into_make_service_with_connect_info::<SocketAddr>());
 
+    let is_master = args.peer.is_none();
     let heartbeat = async {
         loop {
-            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+            tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+
+            // FIXME
+            if !is_master {
+                continue;
+            }
+
             let peers = state.peers.read().await.clone();
             for peer in peers {
                 let res = reqwest::get(format!("http://{}/", peer)).await;
@@ -172,7 +179,9 @@ async fn get_data(State(state): State<Arc<AppState>>) -> AppResult<Json<Vec<Stri
                 .json::<ChunkSerde>()
                 .await
                 .map_err(|err| anyhow::anyhow!(err))?;
-            chunks.push(json.into());
+            let chunk = json.into();
+            tracing::info!("! Got chunk from peer: {:?}", chunk);
+            chunks.push(chunk);
         }
     }
 
@@ -180,12 +189,21 @@ async fn get_data(State(state): State<Arc<AppState>>) -> AppResult<Json<Vec<Stri
 
     let mut elements: Vec<Option<Fr>> = vec![];
     for (i, chunk) in chunks.iter().enumerate() {
-        if chunk.chunk != i as u32 {
-            elements.extend(std::iter::repeat(None).take(CHUNK_SIZE));
-        } else {
-            elements.extend(chunk.data.iter().map(|e| Some(*e)));
+        if chunk.data.is_empty() {
+            continue;
         }
+
+        // if chunk.chunk != i as u32 {
+        //     println!("Invalid chunk: {}", chunk.chunk);
+        //     elements.extend(std::iter::repeat(None).take(CHUNK_SIZE));
+        // } else {
+        //     elements.extend(chunk.data.iter().map(|e| Some(*e)));
+        // }
+
+        elements.extend(chunk.data.iter().map(|e| Some(*e)));
     }
+
+    tracing::info!("Elements: {:?}", elements);
 
     let elements = state
         .domain
@@ -218,7 +236,12 @@ async fn set_data(
     let num_chunks = (encoded.len() + CHUNK_SIZE - 1) / CHUNK_SIZE;
 
     if num_chunks > num_peers {
-        return Err(anyhow::anyhow!("Not enough peers to store data").into());
+        return Err(anyhow::anyhow!(
+            "Not enough peers to store data: expected at least {}, got {}",
+            num_chunks,
+            num_peers
+        )
+        .into());
     }
 
     let chunks = encoded
@@ -294,6 +317,28 @@ async fn p2p(
             peers.insert(addr);
 
             // TODO: notify other peers
+            for peer in &other_peers {
+                let res = reqwest::Client::new()
+                    .post(format!("http://{}/p2p", peer))
+                    .json(&P2PRequest::NewPeer { addr })
+                    .send()
+                    .await;
+
+                if let Ok(res) = res {
+                    if res.status() != 200 {
+                        tracing::error!(
+                            "Failed to notify peer {} about new peer {}: {}",
+                            peer,
+                            addr,
+                            res.status()
+                        );
+                    }
+                } else {
+                    tracing::error!("Peer {} is dead", peer);
+                }
+            }
+
+            tracing::info!("Connected peers: {:?}", peers);
 
             Json(P2PResponse::Connected { other_peers })
         }
